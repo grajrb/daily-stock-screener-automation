@@ -1,0 +1,8 @@
+pandas
+yfinance
+openpyxl
+nsepy
+requests
+beautifulsoup4
+lxml
+tabulate

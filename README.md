@@ -1,161 +1,92 @@
-# Daily Stock Screener Automation
+# Automated Daily Stock Screener for NSE
 
-A Python-based automated stock screening system that runs daily scans to identify trading opportunities based on predefined criteria. This system generates comprehensive reports and maintains historical tracking for performance analysis.
+This project is a fully automated Python application that performs daily stock screening for the Indian stock market (NSE), specifically targeting the NIFTY 500 index. It fetches end-of-day data, applies a rigorous set of fundamental and technical filters, simulates paper trades, and generates a daily report.
 
-## Overview
+## Features
 
-This automation tool performs daily analysis of stock markets to identify potential trading opportunities. The screener applies technical indicators, fundamental metrics, and custom filters to highlight stocks that meet specific criteria for further analysis.
-
-## What the Screener Does
-
-### Core Functionality
-
-- **Daily Market Scans**: Automatically scans entire stock universe based on configured parameters
-- **Technical Analysis**: Applies moving averages, RSI, MACD, volume analysis, and other technical indicators
-- **Fundamental Screening**: Filters stocks based on P/E ratios, market cap, revenue growth, and financial health metrics
-- **Pattern Recognition**: Identifies chart patterns like breakouts, reversals, and consolidations
-- **Sector Analysis**: Provides sector-wise performance comparison and rotation insights
-- **Risk Assessment**: Calculates volatility metrics and risk-adjusted returns
-
-### Output Reports
-
-- **Daily Screening Results**: Top stock picks with detailed analysis
-- **Performance Tracking**: Historical performance of previous recommendations
-- **Market Summary**: Overall market sentiment and sector performance
-- **Watchlist Management**: Maintains and updates dynamic watchlists
-- **Alert System**: Sends notifications for urgent market movements or opportunities
-
-## Key Features
-
-- ✅ **Automated Daily Execution**: Runs automatically during market hours
-- ✅ **Multi-timeframe Analysis**: Analyzes stocks across different time horizons
-- ✅ **Customizable Filters**: Easy-to-modify screening criteria
-- ✅ **Excel Report Generation**: Professional formatted reports for easy analysis
-- ✅ **Historical Data Integration**: Maintains comprehensive historical database
-- ✅ **Risk Management**: Built-in position sizing and risk assessment
-- ✅ **Backtesting Capabilities**: Tests strategies against historical data
-- ✅ **Real-time Alerts**: Immediate notifications for time-sensitive opportunities
+- **Automated Daily Execution:** Designed to be run on a schedule (e.g., via cron or Task Scheduler).
+- **NIFTY 500 Universe:** Screens all stocks in the NIFTY 500 index.
+- **Multi-faceted Screening:** Applies a combination of performance, fundamental, and technical analysis criteria.
+- **Paper Trading Simulation:** Calculates theoretical P/L for stocks that pass the screening.
+- **Comprehensive Reporting:** Generates a detailed Excel report for passed stocks.
+- **Email Notifications:** Sends a summary email with the report attached.
+- **Automated Version Control:** Commits and pushes the daily report and log updates to a Git repository.
 
 ## Project Structure
 
-### Core Files
-
-- `screener.py` - Main screening engine and automation logic
-- `report-template.xlsx` - Excel template for generating formatted reports
-- `config.json` - Configuration file for screening parameters
-- `requirements.txt` - Python dependencies
-
-### Planned Components
-
-- Data fetching modules for multiple sources (Yahoo Finance, Alpha Vantage, etc.)
-- Technical indicator calculation libraries
-- Report generation and formatting utilities
-- Database management for historical data
-- Notification system (email, SMS, webhooks)
-- Web dashboard for monitoring and configuration
+```
+/daily-stock-screener-automation/
+├── main.py                 # Main orchestrator script
+├── config.py               # All user-configurable parameters and secrets
+├── data_fetcher.py         # Module for fetching all required stock data
+├── screener.py             # Module containing the screening logic
+├── reporting.py            # Module for generating Excel reports and email
+├── vcs_handler.py          # Module for handling Git operations
+├── requirements.txt        # List of all necessary Python libraries
+├── .gitignore              # Standard gitignore for a Python project
+└── README.md               # Project documentation and improvement log
+```
 
 ## Setup Instructions
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/grajrb/daily-stock-screener-automation.git
-   cd daily-stock-screener-automation
-   ```
+1.  **Clone the repository:**
+    ```bash
+    git clone <your-repository-url>
+    cd daily-stock-screener-automation
+    ```
 
-2. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+2.  **Create a virtual environment and install dependencies:**
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
+    pip install -r requirements.txt
+    ```
 
-3. **Configure API keys**
-   - Update `config.json` with your data provider API keys
-   - Set up notification credentials (email, SMS services)
+3.  **Configure the application:**
+    *   Open the `config.py` file.
+    *   Fill in your details for the `EMAIL_CONFIG` (SMTP server, credentials, recipients).
+    *   Verify the `VCS_CONFIG` if you are using a different remote or branch name.
+    *   Adjust the `FUNDAMENTAL_FILTERS` and `TECHNICAL_FILTERS` thresholds if desired.
 
-4. **Run the screener**
-   ```bash
-   python screener.py
-   ```
+## Usage
 
-## Configuration
+To run the application manually, execute the `main.py` script from the root of the project directory:
 
-The screener behavior can be customized through the configuration file:
+```bash
+python main.py
+```
 
-- **Market Data Sources**: Choose between different data providers
-- **Screening Criteria**: Set custom technical and fundamental filters
-- **Report Settings**: Customize output format and delivery methods
-- **Scheduling**: Configure automation timing and frequency
-- **Risk Parameters**: Set position sizing and risk management rules
+The script will perform the entire workflow: fetch data, screen stocks, generate a report, send an email, and push the results to your Git repository.
 
-## Stock & Finance Research Data Sources
+## Scheduling the Screener
 
-This screener can leverage comprehensive data sources grouped under 'stock & finance research' tabs to enhance screening accuracy and provide deeper market insights. These data sources are designed to work seamlessly with both manual analysis and automated screening processes.
+### On Linux/macOS (using cron)
 
-### Available Data Types
+1.  Open your crontab file for editing:
+    ```bash
+    crontab -e
+    ```
 
-The stock & finance research data sources provide four key categories of information:
+2.  Add a new line to schedule the script. For example, to run it every day at 8 PM:
+    ```cron
+    0 20 * * * /path/to/your/project/venv/bin/python /path/to/your/project/main.py >> /path/to/your/project/cron.log 2>&1
+    ```
+    *Make sure to use the absolute paths to your virtual environment's Python interpreter and the `main.py` script.*
 
-- **News & Market Updates**: Real-time financial news, earnings announcements, and market-moving events that can impact stock prices and screening results
-- **Fundamental Data**: Comprehensive financial statements, ratios, earnings history, and company metrics essential for fundamental analysis screening
-- **Professional Analysis**: Research reports, analyst ratings, price targets, and institutional recommendations to supplement automated screening criteria
-- **Crowd-Sourced Opinions**: Community sentiment, social media trends, and retail investor discussions that provide alternative perspectives on market sentiment
+### On Windows (using Task Scheduler)
 
-### Integration Benefits
+1.  Open Task Scheduler.
+2.  Click "Create Basic Task...".
+3.  Give the task a name (e.g., "Daily Stock Screener").
+4.  Set the "Trigger" to "Daily" and choose a time (e.g., 8:00 PM).
+5.  Set the "Action" to "Start a program".
+6.  For "Program/script", browse to the Python executable inside your virtual environment (e.g., `C:\path\to\your\project\venv\Scripts\python.exe`).
+7.  In the "Add arguments (optional)" field, enter `main.py`.
+8.  In the "Start in (optional)" field, enter the full path to your project directory (e.g., `C:\path\to\your\project`).
+9.  Finish the wizard.
 
-Incorporating these diverse data sources into your daily stock screening automation provides several advantages:
+---
 
-- **Enhanced Signal Quality**: Combining technical indicators with fundamental data and market sentiment creates more robust screening signals
-- **Risk Mitigation**: News alerts and analyst warnings can help filter out stocks with pending negative catalysts
-- **Opportunity Discovery**: Community insights and social sentiment can identify emerging trends before they appear in traditional metrics
-- **Validation Layer**: Professional analysis serves as a validation mechanism for automated screening results
+## Improvement & Performance Log
 
-### Usage for Users and Automation
-
-These data sources are structured to support both manual research workflows and automated integration:
-
-- **Manual Users**: Access organized tabs containing categorized information for efficient research and due diligence
-- **Automation Systems**: Structured data feeds enable programmatic access for real-time screening enhancement and alert generation
-- **Hybrid Workflows**: Automated screening can flag opportunities while manual review of research data provides final validation
-
-*Note: When implementing these data sources, ensure proper API rate limiting and data usage compliance with provider terms of service.*
-
-## Sample Screening Criteria
-
-- Market cap > $100M
-- Average daily volume > 500K shares
-- RSI between 30-70 (avoiding overbought/oversold extremes)
-- Price above 20-day moving average
-- Recent earnings growth > 15%
-- Debt-to-equity ratio < 0.5
-- Insider buying activity in last 3 months
-
-## Output Example
-
-Daily reports include:
-
-- Top 10 stock recommendations with confidence scores
-- Sector performance rankings
-- Market volatility index
-- Economic calendar highlights
-- Risk-adjusted portfolio suggestions
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit pull requests or open issues for:
-
-- New screening criteria
-- Additional technical indicators
-- Enhanced reporting features
-- Performance optimizations
-- Bug fixes and improvements
-
-## Disclaimer
-
-This tool is for educational and informational purposes only. Stock market investments carry inherent risks, and past performance does not guarantee future results. Always conduct your own research and consider consulting with financial advisors before making investment decisions.
-
-## License
-
-MIT License - see LICENSE file for details.
-
-## Contact
-
-For questions or support, please open an issue or contact [gauravupadhavay9801@gmail.com](mailto:gauravupadhavay9801@gmail.com)
+*This section is automatically updated by the script on each successful run.*
