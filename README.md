@@ -9,6 +9,7 @@ This automation tool performs daily analysis of stock markets to identify potent
 ## What the Screener Does
 
 ### Core Functionality
+
 - **Daily Market Scans**: Automatically scans entire stock universe based on configured parameters
 - **Technical Analysis**: Applies moving averages, RSI, MACD, volume analysis, and other technical indicators
 - **Fundamental Screening**: Filters stocks based on P/E ratios, market cap, revenue growth, and financial health metrics
@@ -17,6 +18,7 @@ This automation tool performs daily analysis of stock markets to identify potent
 - **Risk Assessment**: Calculates volatility metrics and risk-adjusted returns
 
 ### Output Reports
+
 - **Daily Screening Results**: Top stock picks with detailed analysis
 - **Performance Tracking**: Historical performance of previous recommendations
 - **Market Summary**: Overall market sentiment and sector performance
@@ -37,12 +39,14 @@ This automation tool performs daily analysis of stock markets to identify potent
 ## Project Structure
 
 ### Core Files
+
 - `screener.py` - Main screening engine and automation logic
 - `report-template.xlsx` - Excel template for generating formatted reports
 - `config.json` - Configuration file for screening parameters
 - `requirements.txt` - Python dependencies
 
 ### Planned Components
+
 - Data fetching modules for multiple sources (Yahoo Finance, Alpha Vantage, etc.)
 - Technical indicator calculation libraries
 - Report generation and formatting utilities
@@ -82,6 +86,38 @@ The screener behavior can be customized through the configuration file:
 - **Scheduling**: Configure automation timing and frequency
 - **Risk Parameters**: Set position sizing and risk management rules
 
+## Stock & Finance Research Data Sources
+
+This screener can leverage comprehensive data sources grouped under 'stock & finance research' tabs to enhance screening accuracy and provide deeper market insights. These data sources are designed to work seamlessly with both manual analysis and automated screening processes.
+
+### Available Data Types
+
+The stock & finance research data sources provide four key categories of information:
+
+- **News & Market Updates**: Real-time financial news, earnings announcements, and market-moving events that can impact stock prices and screening results
+- **Fundamental Data**: Comprehensive financial statements, ratios, earnings history, and company metrics essential for fundamental analysis screening
+- **Professional Analysis**: Research reports, analyst ratings, price targets, and institutional recommendations to supplement automated screening criteria
+- **Crowd-Sourced Opinions**: Community sentiment, social media trends, and retail investor discussions that provide alternative perspectives on market sentiment
+
+### Integration Benefits
+
+Incorporating these diverse data sources into your daily stock screening automation provides several advantages:
+
+- **Enhanced Signal Quality**: Combining technical indicators with fundamental data and market sentiment creates more robust screening signals
+- **Risk Mitigation**: News alerts and analyst warnings can help filter out stocks with pending negative catalysts
+- **Opportunity Discovery**: Community insights and social sentiment can identify emerging trends before they appear in traditional metrics
+- **Validation Layer**: Professional analysis serves as a validation mechanism for automated screening results
+
+### Usage for Users and Automation
+
+These data sources are structured to support both manual research workflows and automated integration:
+
+- **Manual Users**: Access organized tabs containing categorized information for efficient research and due diligence
+- **Automation Systems**: Structured data feeds enable programmatic access for real-time screening enhancement and alert generation
+- **Hybrid Workflows**: Automated screening can flag opportunities while manual review of research data provides final validation
+
+*Note: When implementing these data sources, ensure proper API rate limiting and data usage compliance with provider terms of service.*
+
 ## Sample Screening Criteria
 
 - Market cap > $100M
@@ -95,6 +131,7 @@ The screener behavior can be customized through the configuration file:
 ## Output Example
 
 Daily reports include:
+
 - Top 10 stock recommendations with confidence scores
 - Sector performance rankings
 - Market volatility index
@@ -104,6 +141,7 @@ Daily reports include:
 ## Contributing
 
 Contributions are welcome! Please feel free to submit pull requests or open issues for:
+
 - New screening criteria
 - Additional technical indicators
 - Enhanced reporting features
