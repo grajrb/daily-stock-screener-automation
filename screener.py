@@ -54,49 +54,39 @@ def run_screening(df):
     # Calculate indicators first
     df = calculate_indicators(df)
 
-    # Get the latest data for each stock
-    latest_df = df.loc[df.groupby('Ticker')['Date'].idxmax()]
+    # Get the latest data for each stock and create a copy to avoid SettingWithCopyWarning
+    latest_df = df.loc[df.groupby('Ticker')['Date'].idxmax()].copy()
 
     # --- Apply Filters ---
     f_filters = config.FUNDAMENTAL_FILTERS
     
-    # 1. Daily Performance Filter
-    passing_stocks = latest_df[latest_df['Close'] > latest_df['Open']].copy()
-    logging.info(f"{len(passing_stocks)} stocks passed the Daily Performance Filter.")
+    # Add placeholder columns before filtering
+    latest_df['Piotroski Score'] = latest_df.apply(get_piotroski_score, axis=1)
+    latest_df['Cfo/PAT'] = latest_df.apply(get_cfo_pat_ratio, axis=1)
 
-    # 2. Fundamental Filters
-    passing_stocks = passing_stocks[passing_stocks['P/E'].apply(lambda x: isinstance(x, (int, float)) and x <= f_filters['PE_RATIO_MAX'])]
-    logging.info(f"{len(passing_stocks)} stocks passed the P/E Ratio Filter.")
+    # Coerce columns to numeric, turning non-numeric values into NaN
+    numeric_cols = ['P/E', 'P/B', 'ROE', 'Debt/Equity', 'Promoter Holding (%)', 'Piotroski Score', 'Cfo/PAT']
+    for col in numeric_cols:
+        latest_df[col] = pd.to_numeric(latest_df[col], errors='coerce')
 
-    passing_stocks = passing_stocks[passing_stocks['P/B'].apply(lambda x: isinstance(x, (int, float)) and f_filters['PB_RATIO_MIN'] <= x <= f_filters['PB_RATIO_MAX'])]
-    logging.info(f"{len(passing_stocks)} stocks passed the P/B Ratio Filter.")
+    # Build a combined boolean mask for all filters
+    # Using .fillna() to handle missing data gracefully during comparison
+    mask = (
+        (latest_df['Close'] > latest_df['Open']) &
+        (latest_df['P/E'].fillna(999) <= f_filters['PE_RATIO_MAX']) &
+        (latest_df['P/B'].fillna(0).between(f_filters['PB_RATIO_MIN'], f_filters['PB_RATIO_MAX'])) &
+        (latest_df['ROE'].fillna(0) * 100 >= f_filters['ROE_MIN']) &
+        (latest_df['Debt/Equity'].fillna(999) <= f_filters['DEBT_TO_EQUITY_MAX']) &
+        (latest_df['Promoter Holding (%)'].fillna(0) >= f_filters['PROMOTER_HOLDING_MIN']) &
+        (latest_df['Piotroski Score'].fillna(0) >= f_filters['PIOTROSKI_SCORE_MIN']) &
+        (latest_df['Cfo/PAT'].fillna(0) >= f_filters['CFO_PAT_RATIO_MIN']) &
+        (latest_df['50_DMA'] > latest_df['200_EMA'])
+    )
 
-    passing_stocks = passing_stocks[passing_stocks['ROE'].apply(lambda x: isinstance(x, (int, float)) and x * 100 >= f_filters['ROE_MIN'])]
-    logging.info(f"{len(passing_stocks)} stocks passed the ROE Filter.")
+    passing_stocks = latest_df[mask].copy()
+    logging.info(f"{len(passing_stocks)} stocks passed all screening criteria.")
     
-    # ROCE is not directly available in yfinance, so we'll use ROA as a proxy or skip. For now, we skip.
-    # A more advanced data source would be needed for ROCE.
-    # passing_stocks = passing_stocks[passing_stocks['ROCE'] >= f_filters['ROCE_MIN']]
-    
-    passing_stocks = passing_stocks[passing_stocks['Debt/Equity'].apply(lambda x: isinstance(x, (int, float)) and x <= f_filters['DEBT_TO_EQUITY_MAX'])]
-    logging.info(f"{len(passing_stocks)} stocks passed the Debt-to-Equity Filter.")
-
-    passing_stocks = passing_stocks[passing_stocks['Promoter Holding (%)'].apply(lambda x: isinstance(x, (int, float)) and x >= f_filters['PROMOTER_HOLDING_MIN'])]
-    logging.info(f"{len(passing_stocks)} stocks passed the Promoter Holding Filter.")
-
-    # Piotroski Score and CFO/PAT are placeholders
-    passing_stocks['Piotroski Score'] = passing_stocks.apply(lambda row: get_piotroski_score(row), axis=1)
-    passing_stocks = passing_stocks[passing_stocks['Piotroski Score'] >= f_filters['PIOTROSKI_SCORE_MIN']]
-    logging.info(f"{len(passing_stocks)} stocks passed the Piotroski Score Filter.")
-
-    passing_stocks['Cfo/PAT'] = passing_stocks.apply(lambda row: get_cfo_pat_ratio(row), axis=1)
-    passing_stocks = passing_stocks[passing_stocks['Cfo/PAT'] >= f_filters['CFO_PAT_RATIO_MIN']]
-    logging.info(f"{len(passing_stocks)} stocks passed the CFO/PAT Ratio Filter.")
-
-    # 3. Technical Filter
-    passing_stocks = passing_stocks[passing_stocks['50_DMA'] > passing_stocks['200_EMA']]
     passing_stocks['50DMA>200EMA'] = 'Yes'
-    logging.info(f"{len(passing_stocks)} stocks passed the Technical Filter (50DMA > 200EMA).")
 
     if passing_stocks.empty:
         logging.info("No stocks passed all screening criteria.")
