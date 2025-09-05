@@ -117,3 +117,5 @@ dmypy.json
 config.py
 *.log
 *.xlsx
+# Environment variables
+.env

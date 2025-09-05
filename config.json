@@ -1,0 +1,16 @@
+{
+  "screener_settings": {
+    "target_index": "NIFTY 500",
+    "top_n_gainers": 10
+  },
+  "api_keys": {
+    "gnews": "YOUR_GNEWS_API_KEY_HERE"
+  },
+  "scoring_weights": {
+    "eod_price_strength": 3.0,
+    "eod_volume_spike": 2.5,
+    "news_sentiment": 2.0,
+    "technical_momentum": 1.5,
+    "global_sentiment": 1.0
+  }
+}

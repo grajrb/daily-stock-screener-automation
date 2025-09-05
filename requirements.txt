@@ -6,3 +6,16 @@ requests
 beautifulsoup4
 lxml
 tabulate
+google-generativeai
+feedparser
+psycopg2-binary
+SQLAlchemy
+PyYAML
+jupyter
+matplotlib
+seaborn
+numpy==1.23.5
+gnewsclient
+nltk
+vaderSentiment
+python-Levenshtein

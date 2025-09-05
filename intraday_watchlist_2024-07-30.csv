@@ -1,0 +1,3 @@
+Ticker,Signal,Last_Close,Potential_Gainer_Score,Entry_Zone,Target_1,Target_2,Stop_Loss
+INFY,BUY,1650.00,14.2,"Enter on breakout above R1 (1660.00)","1660.00","1675.00","Below Pivot (1640.00)"
+HDFCBANK,BUY,1700.00,10.5,"Enter on breakout above R1 (1710.00)","1710.00","1725.00","Below Pivot (1690.00)"

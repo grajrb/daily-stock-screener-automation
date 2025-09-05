@@ -1,0 +1,11 @@
+Ticker,Signal,Last_Close,Potential_Gainer_Score,Entry_Zone,Target_1,Target_2,Stop_Loss
+FINCABLES,HOLD,870.55,14.20,Enter on breakout above R1 (898.72) or on dip near Pivot (876.83),898.72,926.88,Below Pivot (876.83) or S1 (848.67)
+LEMONTREE,BUY,168.42,8.11,Enter on breakout above R1 (173.32) or on dip near Pivot (170.00),173.32,178.23,Below Pivot (170.00) or S1 (165.09)
+INDIACEM,BUY,387.80,5.87,Enter on breakout above R1 (392.68) or on dip near Pivot (389.92),392.68,397.57,Below Pivot (389.92) or S1 (385.03)
+OLAELEC,HOLD,49.14,5.59,Enter on breakout above R1 (49.78) or on dip near Pivot (48.96),49.78,50.41,Below Pivot (48.96) or S1 (48.33)
+TIINDIA,BUY,3151.90,5.28,Enter on breakout above R1 (3180.20) or on dip near Pivot (3128.60),3180.20,3208.50,Below Pivot (3128.60) or S1 (3100.30)
+SUNDARMFIN,BUY,5278.00,5.19,Enter on breakout above R1 (5330.00) or on dip near Pivot (5248.00),5330.00,5382.00,Below Pivot (5248.00) or S1 (5196.00)
+M&M,BUY,3393.00,5.10,Enter on breakout above R1 (3399.47) or on dip near Pivot (3387.43),3399.47,3405.93,Below Pivot (3387.43) or S1 (3380.97)
+PFIZER,BUY,5728.50,5.09,Enter on breakout above R1 (5744.33) or on dip near Pivot (5713.67),5744.33,5760.17,Below Pivot (5713.67) or S1 (5697.83)
+OLECTRA,BUY,1557.00,5.06,Enter on breakout above R1 (1593.13) or on dip near Pivot (1559.57),1593.13,1629.27,Below Pivot (1559.57) or S1 (1523.43)
+MANKIND,BUY,2612.10,5.03,Enter on breakout above R1 (2621.30) or on dip near Pivot (2604.60),2621.30,2630.50,Below Pivot (2604.60) or S1 (2595.40)

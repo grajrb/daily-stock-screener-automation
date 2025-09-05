@@ -1,0 +1,11 @@
+Ticker,Signal,Last_Close,Potential_Gainer_Score,Entry_Zone,Target_1,Target_2,Stop_Loss
+MPHASIS,BUY,2959.40,9.22,Enter on breakout above R1 (2979.60) or on dip near Pivot (2939.80),2979.60,2999.80,Below Pivot (2939.80) or S1 (2919.60)
+ABFRL,HOLD,82.66,8.83,Enter on breakout above R1 (83.57) or on dip near Pivot (82.22),83.57,84.49,Below Pivot (82.22) or S1 (81.30)
+JSL,BUY,814.40,8.76,Enter on breakout above R1 (830.05) or on dip near Pivot (802.55),830.05,845.70,Below Pivot (802.55) or S1 (786.90)
+YESBANK,BUY,19.74,8.60,Enter on breakout above R1 (20.07) or on dip near Pivot (19.87),20.07,20.41,Below Pivot (19.87) or S1 (19.53)
+NETWEB,BUY,2408.40,8.40,Enter on breakout above R1 (2451.00) or on dip near Pivot (2365.80),2451.00,2493.60,Below Pivot (2365.80) or S1 (2323.20)
+GPIL,HOLD,243.60,8.40,Enter on breakout above R1 (246.34) or on dip near Pivot (242.11),246.34,249.09,Below Pivot (242.11) or S1 (239.36)
+ECLERX,BUY,4115.00,8.27,Enter on breakout above R1 (4206.00) or on dip near Pivot (4058.00),4206.00,4297.00,Below Pivot (4058.00) or S1 (3967.00)
+UNOMINDA,BUY,1291.90,7.87,Enter on breakout above R1 (1301.33) or on dip near Pivot (1283.57),1301.33,1310.77,Below Pivot (1283.57) or S1 (1274.13)
+LATENTVIEW,BUY,433.10,7.75,Enter on breakout above R1 (439.40) or on dip near Pivot (429.70),439.40,445.70,Below Pivot (429.70) or S1 (423.40)
+LTIM,BUY,5334.00,7.68,Enter on breakout above R1 (5363.00) or on dip near Pivot (5306.00),5363.00,5392.00,Below Pivot (5306.00) or S1 (5277.00)
