@@ -1,7 +1,9 @@
 {
   "screener_settings": {
     "target_index": "NIFTY 500",
-    "top_n_gainers": 10
+    "top_n_gainers": 10,
+    "min_price": 50,
+    "min_traded_value_20d": 20000000
   },
   "api_keys": {
     "gnews": "YOUR_GNEWS_API_KEY_HERE"
@@ -11,6 +13,11 @@
     "eod_volume_spike": 2.5,
     "news_sentiment": 2.0,
     "technical_momentum": 1.5,
-    "global_sentiment": 1.0
+    "global_sentiment": 1.0,
+    "volatility_penalty": 0.7,
+    "fiftytwo_wk_proximity": 0.5
+  },
+  "performance": {
+    "parallel_max_workers": 8
   }
 }
