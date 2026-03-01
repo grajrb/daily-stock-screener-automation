@@ -53,6 +53,8 @@ import requests
 import yfinance as yf
 from tabulate import tabulate
 
+import db
+
 warnings.filterwarnings("ignore")
 
 # ── Optional dependencies (degrade gracefully) ──────────────────────────────
@@ -86,7 +88,7 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-ACTIVE_TRADES_FILE = "active_trades.json"
+# All trades stored in SQLite via db.py (screener.db)
 
 # All thresholds are intentionally strict — we want ONLY the best setups
 FILTERS = {
@@ -702,105 +704,91 @@ def build_watchlist_df(picks: List[FilterResult], f: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def save_to_active_trades(df: pd.DataFrame):
-    """Append new picks to the active_trades.json portfolio tracker."""
-    trades = []
-    if os.path.exists(ACTIVE_TRADES_FILE):
-        try:
-            with open(ACTIVE_TRADES_FILE, "r") as fp:
-                trades = json.load(fp)
-        except Exception:
-            trades = []
-
+def save_picks_to_db(conn, picks: List[FilterResult]):
+    """Save picks to SQLite database."""
     today = datetime.now().strftime("%Y-%m-%d")
-    existing_tickers = {t["ticker"] for t in trades if t.get("status") == "OPEN"}
-
-    for _, row in df.iterrows():
-        if row["Ticker"] in existing_tickers:
-            continue  # Don't duplicate
-        trades.append({
-            "ticker": row["Ticker"],
-            "entry_date": today,
-            "entry_price": row["Entry_Price"],
-            "target": row["Target_(15%)"],
-            "stop_loss": row["Stop_Loss"],
-            "confidence": row["Confidence"],
-            "status": "OPEN",
-            "exit_date": None,
-            "exit_price": None,
-            "result": None,
+    count = 0
+    for p in picks:
+        row_id = db.insert_pick(conn, {
+            "run_date": today, "screener_type": "weekly",
+            "ticker": p.symbol, "last_close": p.last_close,
+            "entry_price": p.entry, "target": p.target,
+            "stop_loss": p.stop_loss, "upside_pct": p.upside_pct,
+            "risk_pct": p.risk_pct, "risk_reward": p.risk_reward,
+            "confidence": p.confidence, "rsi": p.rsi_val, "adx": p.adx_val,
+            "macd_bullish": 1 if p.macd_bullish else 0,
+            "vol_spike": p.vol_spike,
+            "rel_str_1m": p.rel_str_1m, "rel_str_3m": p.rel_str_3m,
+            "pct_from_52w_hi": p.pct_from_52w_hi,
+            "rev_growth": p.rev_growth, "profit_growth": p.profit_growth,
+            "news_sentiment": p.news_sentiment,
+            "composite_score": None,
+            "rationale": p.rationale,
+            "filters_json": json.dumps({k: v for k, v in p.filters.items()}),
         })
+        if row_id: count += 1
+    print(f"     {count} new picks saved to screener.db")
 
-    with open(ACTIVE_TRADES_FILE, "w") as fp:
-        json.dump(trades, fp, indent=2)
 
-
-def check_portfolio():
-    """Check active trades against current prices for exit signals."""
-    if not os.path.exists(ACTIVE_TRADES_FILE):
-        print("No active trades found. Run the screener first.")
-        return
-
-    with open(ACTIVE_TRADES_FILE, "r") as fp:
-        trades = json.load(fp)
-
-    open_trades = [t for t in trades if t.get("status") == "OPEN"]
-    if not open_trades:
-        print("No open trades to check.")
+def check_portfolio(conn):
+    """Check active weekly trades against current prices for exit signals."""
+    open_picks = db.get_open_picks(conn, "weekly")
+    if not open_picks:
+        print("No open weekly trades.")
         return
 
     print(f"\n{'='*80}")
-    print(f"  PORTFOLIO CHECK — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    print(f"  Open trades: {len(open_trades)}")
+    print(f"  WEEKLY PORTFOLIO CHECK — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"  Open trades: {len(open_picks)}")
     print(f"{'='*80}\n")
 
     rows = []
-    updated = False
-    for t in open_trades:
-        ticker = t["ticker"]
+    for p in open_picks:
+        ticker = p["ticker"]
         try:
             hist = yf.Ticker(f"{ticker}.NS").history(period="5d")
             if hist.empty:
                 continue
             current = float(hist["Close"].iloc[-1])
-            entry = t["entry_price"]
-            target = t["target"]
-            sl = t["stop_loss"]
+            entry = p["entry_price"]
+            target = p["target"]
+            sl = p["stop_loss"]
 
             pnl_pct = (current / entry - 1) * 100
-            days_held = (datetime.now() - datetime.strptime(t["entry_date"], "%Y-%m-%d")).days
+            days_held = (datetime.now() - datetime.strptime(p["run_date"], "%Y-%m-%d")).days
 
-            # Decision
             action = "HOLD"
+            status = None
             if current >= target:
                 action = "SELL (TARGET HIT)"
-                t["status"] = "CLOSED"
-                t["exit_date"] = datetime.now().strftime("%Y-%m-%d")
-                t["exit_price"] = current
-                t["result"] = "TARGET_HIT"
-                updated = True
+                status = "TARGET_HIT"
             elif current <= sl:
                 action = "SELL (STOP-LOSS HIT)"
-                t["status"] = "CLOSED"
-                t["exit_date"] = datetime.now().strftime("%Y-%m-%d")
-                t["exit_price"] = current
-                t["result"] = "STOP_LOSS"
-                updated = True
+                status = "STOP_LOSS"
             elif days_held > 60:
                 action = "REVIEW (>60 days)"
+                status = "EXPIRED"
             elif pnl_pct > 10:
-                # Trail stop to breakeven
                 action = f"HOLD (trail SL to {entry:.2f})"
 
+            if status:
+                db.close_pick(conn, p["id"], status, current,
+                              datetime.now().strftime("%Y-%m-%d"), round(pnl_pct, 2), days_held)
+                db.insert_outcome(conn, {
+                    "pick_id": p["id"],
+                    "check_date": datetime.now().strftime("%Y-%m-%d"),
+                    "current_price": current, "pnl_pct": round(pnl_pct, 2),
+                    "hit_target": 1 if status == "TARGET_HIT" else 0,
+                    "hit_stop_loss": 1 if status == "STOP_LOSS" else 0,
+                    "max_price_since": current, "min_price_since": current,
+                    "action_taken": action,
+                })
+
             rows.append({
-                "Ticker": ticker,
-                "Entry": entry,
-                "Current": round(current, 2),
-                "Target": target,
-                "Stop_Loss": sl,
-                "P&L_%": f"{pnl_pct:+.1f}%",
-                "Days": days_held,
-                "Action": action,
+                "Ticker": ticker, "Entry": entry,
+                "Current": round(current, 2), "Target": target,
+                "Stop_Loss": sl, "P&L_%": f"{pnl_pct:+.1f}%",
+                "Days": days_held, "Action": action,
             })
         except Exception:
             rows.append({"Ticker": ticker, "Action": "DATA ERROR"})
@@ -808,20 +796,11 @@ def check_portfolio():
     if rows:
         print(tabulate(pd.DataFrame(rows), headers="keys", tablefmt="grid", showindex=False))
 
-    if updated:
-        with open(ACTIVE_TRADES_FILE, "w") as fp:
-            json.dump(trades, fp, indent=2)
-        print("\n[Updated active_trades.json with closed positions]")
-
-    # Show summary
-    all_closed = [t for t in trades if t.get("status") == "CLOSED"]
-    if all_closed:
-        wins = sum(1 for t in all_closed if t.get("result") == "TARGET_HIT")
-        losses = sum(1 for t in all_closed if t.get("result") == "STOP_LOSS")
-        total = wins + losses
-        wr = (wins / total * 100) if total > 0 else 0
-        print(f"\n--- Historical Performance ---")
-        print(f"Total closed: {total} | Wins: {wins} | Losses: {losses} | Win Rate: {wr:.0f}%")
+    stats = db.get_performance_stats(conn, "weekly")
+    if stats["total"] > 0:
+        print(f"\n--- Weekly Performance ---")
+        print(f"Total: {stats['total']} | Wins: {stats['wins']} | Losses: {stats['losses']} | "
+              f"Win Rate: {stats['win_rate']:.0f}%")
     print()
 
 
@@ -835,8 +814,7 @@ def save_and_display(df: pd.DataFrame, pulse: dict):
     csv_path = f"monday_picks_{date_str}.csv"
     df.to_csv(csv_path, index=False)
 
-    # Save to portfolio tracker
-    save_to_active_trades(df)
+    # (picks saved to DB separately)
 
     print(f"\n{'='*100}")
     print(f"  MONDAY STOCK PICKS — {date_str}")
@@ -899,7 +877,7 @@ def save_and_display(df: pd.DataFrame, pulse: dict):
         print()
 
     print(f"  Report saved: {csv_path}")
-    print(f"  Portfolio tracker: {ACTIVE_TRADES_FILE}")
+    print(f"  Database: screener.db")
     print()
 
 
@@ -917,8 +895,11 @@ def main():
     parser.add_argument("--check-portfolio", action="store_true", help="Check open trades for exit signals")
     args = parser.parse_args()
 
+    conn = db.get_conn()
+
     if args.check_portfolio:
-        check_portfolio()
+        check_portfolio(conn)
+        conn.close()
         return
 
     print()
@@ -960,13 +941,19 @@ def main():
         print("  It's better to wait than to invest in weak setups.\n")
         sys.exit(0)
 
-    # Step 5: Build report
-    print("[5/6] Building trade plan...")
+    # Step 5: Save to DB
+    print("[5/6] Saving picks to database...")
+    save_picks_to_db(conn, picks)
     df = build_watchlist_df(picks, f)
 
+    # Log the run
+    stats = db.get_performance_stats(conn, "weekly")
+    db.log_run(conn, "weekly", len(symbols), len(picks), stats.get("win_rate"), f)
+
     # Step 6: Output
-    print("[6/6] Saving report...\n")
+    print("[6/6] Generating report...\n")
     save_and_display(df, pulse)
+    conn.close()
 
 
 if __name__ == "__main__":
