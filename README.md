@@ -1,94 +1,79 @@
-# Automated Daily Stock Screener for NSE
+# Weekly Stock Picker — Monday Market Open Edition
 
-This project is a fully automated Python application that performs daily stock screening for the Indian stock market (NSE), specifically targeting the NIFTY 500 index. It fetches end-of-day data, applies a rigorous set of fundamental and technical filters, simulates paper trades, and generates a daily report.
+A high-conviction stock screener for NSE (Nifty 500) that finds the best stocks to buy every Monday morning. Uses **8 strict filters** — a stock must pass ALL of them to make the list.
 
-## Features
+## How It Works
 
-- **Automated Daily Execution:** Designed to be run on a schedule (e.g., via cron or Task Scheduler).
-- **NIFTY 500 Universe:** Screens all stocks in the NIFTY 500 index.
-- **Multi-faceted Screening:** Applies a combination of performance, fundamental, and technical analysis criteria.
-- **Paper Trading Simulation:** Calculates theoretical P/L for stocks that pass the screening.
-- **Comprehensive Reporting:** Generates a detailed Excel report for passed stocks.
-- **Email Notifications:** Sends a summary email with the report attached.
-- **Automated Version Control:** Commits and pushes the daily report and log updates to a Git repository.
+Every Sunday/Monday before market open, run the script. It screens all 500 Nifty stocks through:
+
+| # | Filter | What It Checks |
+|---|--------|----------------|
+| 1 | **Trend** | Price above rising SMA50 & SMA200, golden cross (Stage-2 uptrend) |
+| 2 | **Momentum** | RSI 50-75, MACD bullish, ADX > 20 (trending, not overbought) |
+| 3 | **Volume** | Volume spike > 1.3x 20-day avg + rising On-Balance Volume |
+| 4 | **Relative Strength** | Outperforming Nifty 50 over last 1 month |
+| 5 | **52-Week Position** | Within 15% of 52W high, at least 25% above 52W low |
+| 6 | **Fundamentals** | YoY revenue & profit growth > 8% (scraped from screener.in) |
+| 7 | **News Sentiment** | Not heavily negative (Google News RSS + VADER analysis) |
+| 8 | **Risk-Reward** | Minimum 2:1 ratio (target +15%, stop-loss ~5-7% below) |
+
+Only stocks passing **ALL 8 filters** appear in the final list.
+
+## Quick Start
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the full scan (takes 10-15 min)
+python weekly_stock_picker.py
+
+# Faster scan — skip screener.in fundamentals
+python weekly_stock_picker.py --fast
+
+# Check your open trades for exit signals
+python weekly_stock_picker.py --check-portfolio
+```
+
+## Output
+
+- `monday_picks_YYYY-MM-DD.csv` — This week's picks with Entry, Target, Stop-Loss
+- `active_trades.json` — Portfolio tracker (auto-updated)
+- Console printout with full trade plan
+
+## How To Trade
+
+1. **BUY** at the Entry Price on Monday after 9:30 AM (let first 15 min settle)
+2. **SET STOP-LOSS** immediately at the Stop_Loss price
+3. **HOLD** — don't panic-sell on small dips
+4. **SELL** when the stock hits the Target price (~15% up)
+5. If a stock goes up 10%+, trail your stop-loss to your entry price
+6. Run `--check-portfolio` weekly to see which trades to exit
+7. Max hold: 60 days — review if target not hit
+
+## Risk Management
+
+- **Position sizing:** Never more than 15% of capital in one stock
+- **Risk per trade:** ~2% of total capital
+- **Expected win rate:** ~60-70% (not 100% — no system can guarantee that)
+- **Why it still works:** Winners (+15%) are bigger than losers (~5-7%)
 
 ## Project Structure
 
 ```
-/daily-stock-screener-automation/
-├── main.py                 # Main orchestrator script
-├── config.py               # All user-configurable parameters and secrets
-├── data_fetcher.py         # Module for fetching all required stock data
-├── screener.py             # Module containing the screening logic
-├── reporting.py            # Module for generating Excel reports and email
-├── vcs_handler.py          # Module for handling Git operations
-├── requirements.txt        # List of all necessary Python libraries
-├── .gitignore              # Standard gitignore for a Python project
-└── README.md               # Project documentation and improvement log
+weekly_stock_picker.py   # The main script — run this
+config.json              # Filter thresholds (editable)
+requirements.txt         # Python dependencies
+active_trades.json       # Auto-generated portfolio tracker
+monday_picks_*.csv       # Auto-generated weekly reports
+README.md                # This file
 ```
 
-## Setup Instructions
+## Requirements
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <your-repository-url>
-    cd daily-stock-screener-automation
-    ```
+- Python 3.8+
+- Internet connection (fetches live data from NSE, Yahoo Finance, screener.in, Google News)
 
-2.  **Create a virtual environment and install dependencies:**
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
-    pip install -r requirements.txt
-    ```
+## Disclaimer
 
-3.  **Configure the application:**
-    *   Open the `config.py` file.
-    *   Fill in your details for the `EMAIL_CONFIG` (SMTP server, credentials, recipients).
-    *   Verify the `VCS_CONFIG` if you are using a different remote or branch name.
-    *   Adjust the `FUNDAMENTAL_FILTERS` and `TECHNICAL_FILTERS` thresholds if desired.
-
-## Usage
-
-To run the application manually, execute the `main.py` script from the root of the project directory:
-
-```bash
-python main.py
-```
-
-The script will perform the entire workflow: fetch data, screen stocks, generate a report, send an email, and push the results to your Git repository.
-
-## Scheduling the Screener
-
-### On Linux/macOS (using cron)
-
-1.  Open your crontab file for editing:
-    ```bash
-    crontab -e
-    ```
-
-2.  Add a new line to schedule the script. For example, to run it every day at 8 PM:
-    ```cron
-    0 20 * * * /path/to/your/project/venv/bin/python /path/to/your/project/main.py >> /path/to/your/project/cron.log 2>&1
-    ```
-    *Make sure to use the absolute paths to your virtual environment's Python interpreter and the `main.py` script.*
-
-### On Windows (using Task Scheduler)
-
-1.  Open Task Scheduler.
-2.  Click "Create Basic Task...".
-3.  Give the task a name (e.g., "Daily Stock Screener").
-4.  Set the "Trigger" to "Daily" and choose a time (e.g., 8:00 PM).
-5.  Set the "Action" to "Start a program".
-6.  For "Program/script", browse to the Python executable inside your virtual environment (e.g., `C:\path\to\your\project\venv\Scripts\python.exe`).
-7.  In the "Add arguments (optional)" field, enter `main.py`.
-8.  In the "Start in (optional)" field, enter the full path to your project directory (e.g., `C:\path\to\your\project`).
-9.  Finish the wizard.
-
----
-
-## Improvement & Performance Log
-
-*This section is automatically updated by the script on each successful run.*
-
-* **2025-07-27:** Screened 500 stocks, 0 passed. No report generated.
+No screener can guarantee 100% that a stock will go up. Stock markets carry inherent risk. This tool uses the strictest multi-factor filters to find high-probability setups, but some trades will still fail. **Always use the stop-loss.** Never invest money you can't afford to lose.
