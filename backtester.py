@@ -51,6 +51,7 @@ WEEKLY_PARAM_BOUNDS = {
 }
 
 SWING_PARAM_BOUNDS = {
+    # Scoring weights
     "w_trend":          (0.5, 4.0, 2.0),
     "w_momentum":       (0.5, 4.0, 2.0),
     "w_volume":         (0.5, 4.0, 1.8),
@@ -61,7 +62,14 @@ SWING_PARAM_BOUNDS = {
     "w_sentiment":      (0.1, 2.5, 1.0),
     "w_52w_proximity":  (0.1, 2.0, 0.8),
     "w_bulk_deals":     (0.1, 2.0, 0.6),
-    "min_composite":    (2.0, 8.0, 4.0),
+    # Filter thresholds
+    "min_composite_score":      (30.0, 65.0, 45.0),
+    "rsi_low":                  (35.0, 55.0, 45.0),
+    "rsi_high":                 (65.0, 85.0, 78.0),
+    "min_adx":                  (12.0, 28.0, 18.0),
+    "volume_spike_threshold":   (1.0,  2.5,  1.4),
+    "pct_from_52w_high_max":    (5.0,  25.0, 15.0),
+    "consolidation_range_pct":  (4.0,  15.0, 8.0),
 }
 
 
@@ -226,8 +234,8 @@ def _analyze_weekly_failures(conn) -> Dict[str, float]:
 
 def _analyze_swing_failures(conn) -> Dict[str, float]:
     """
-    Analyse failed swing picks to find which scoring weights need adjustment.
-    Returns suggested new weight values.
+    Analyse failed swing picks to find which scoring weights AND filter
+    thresholds need adjustment.  Returns suggested new parameter values.
     """
     failures = db.get_failure_analysis(conn, "swing")
     winners = db.get_historical_picks(conn, "swing")
@@ -238,7 +246,7 @@ def _analyze_swing_failures(conn) -> Dict[str, float]:
 
     suggestions = {}
 
-    # Compare technical indicator profiles of wins vs losses
+    # ── Part 1: Adjust SCORING WEIGHTS via separation analysis ─────────
     indicators = {
         "rsi": "w_momentum",
         "adx": "w_trend",
@@ -259,23 +267,67 @@ def _analyze_swing_failures(conn) -> Dict[str, float]:
         fail_med = statistics.median(fail_vals)
         win_med = statistics.median(win_vals)
 
-        # If winners and losers differ significantly on this indicator,
-        # increase its weight to give it more importance in scoring
         if abs(win_med - fail_med) > 0:
-            # Calculate separation ratio: how well this indicator separates wins from losses
             combined_std = (statistics.stdev(fail_vals + win_vals) + 0.001)
             separation = abs(win_med - fail_med) / combined_std
 
             if separation > 0.5:
-                # Good separator — increase weight
                 _, max_w, default_w = SWING_PARAM_BOUNDS.get(weight_name, (0.1, 4.0, 1.0))
                 current = db.get_algo_param(conn, "swing", weight_name, default_w)
                 suggestions[weight_name] = min(max_w, current + 0.2)
             elif separation < 0.1:
-                # Poor separator — decrease weight
                 min_w, _, default_w = SWING_PARAM_BOUNDS.get(weight_name, (0.1, 4.0, 1.0))
                 current = db.get_algo_param(conn, "swing", weight_name, default_w)
                 suggestions[weight_name] = max(min_w, current - 0.1)
+
+    # ── Part 2: Adjust FILTER THRESHOLDS based on win/loss distributions ─
+
+    # RSI range
+    fail_rsi = [f["rsi"] for f in failures if f["rsi"] is not None]
+    win_rsi = [w["rsi"] for w in winners if w["rsi"] is not None]
+    if fail_rsi and win_rsi:
+        fail_med = statistics.median(fail_rsi)
+        win_med = statistics.median(win_rsi)
+        if fail_med > win_med + 3:
+            suggestions["rsi_high"] = max(65.0, win_med + 5)
+        if fail_med < win_med - 3:
+            suggestions["rsi_low"] = min(55.0, win_med - 5)
+
+    # ADX minimum
+    fail_adx = [f["adx"] for f in failures if f["adx"] is not None]
+    win_adx = [w["adx"] for w in winners if w["adx"] is not None]
+    if fail_adx and win_adx:
+        fail_med = statistics.median(fail_adx)
+        win_med = statistics.median(win_adx)
+        if win_med > fail_med + 2:
+            suggestions["min_adx"] = win_med - 3
+
+    # Volume spike
+    fail_vol = [f["vol_spike"] for f in failures if f["vol_spike"] is not None]
+    win_vol = [w["vol_spike"] for w in winners if w["vol_spike"] is not None]
+    if fail_vol and win_vol:
+        fail_med = statistics.median(fail_vol)
+        win_med = statistics.median(win_vol)
+        if win_med > fail_med + 0.2:
+            suggestions["volume_spike_threshold"] = win_med - 0.1
+
+    # 52-week proximity
+    fail_52w = [f["pct_from_52w_hi"] for f in failures if f["pct_from_52w_hi"] is not None]
+    win_52w = [w["pct_from_52w_hi"] for w in winners if w["pct_from_52w_hi"] is not None]
+    if fail_52w and win_52w:
+        fail_med = statistics.median(fail_52w)
+        win_med = statistics.median(win_52w)
+        if fail_med > win_med + 3:
+            suggestions["pct_from_52w_high_max"] = win_med + 2
+
+    # Composite score minimum — raise if losers have lower scores
+    fail_cs = [f["composite_score"] for f in failures if f.get("composite_score") is not None]
+    win_cs = [w["composite_score"] for w in winners if w.get("composite_score") is not None]
+    if fail_cs and win_cs:
+        fail_med = statistics.median(fail_cs)
+        win_med = statistics.median(win_cs)
+        if win_med > fail_med + 3:
+            suggestions["min_composite_score"] = (fail_med + win_med) / 2
 
     return suggestions
 

@@ -584,14 +584,22 @@ def check_portfolio(conn):
             pnl = (current / entry - 1) * 100
             days = (datetime.now() - datetime.strptime(p["run_date"], "%Y-%m-%d")).days
 
+            # Track max/min since entry for detailed outcome logging
+            try:
+                full_hist = yf.Ticker(f"{p['ticker']}.NS").history(start=p["run_date"])
+                max_price = float(full_hist["High"].max()) if not full_hist.empty else current
+                min_price = float(full_hist["Low"].min()) if not full_hist.empty else current
+            except Exception:
+                max_price, min_price = current, current
+
             action = "HOLD"
             status = None
             if current >= target:
                 action = "SELL (TARGET HIT)"; status = "TARGET_HIT"
             elif current <= sl:
                 action = "SELL (STOP-LOSS)"; status = "STOP_LOSS"
-            elif days > 60:
-                action = "REVIEW (>60 days)"; status = "EXPIRED"
+            elif days > 120:
+                action = "REVIEW (>120 days)"; status = "EXPIRED"
             elif pnl > 10:
                 action = f"HOLD (trail SL to {entry:.2f})"
 
@@ -603,7 +611,7 @@ def check_portfolio(conn):
                     "current_price": current, "pnl_pct": round(pnl, 2),
                     "hit_target": 1 if status == "TARGET_HIT" else 0,
                     "hit_stop_loss": 1 if status == "STOP_LOSS" else 0,
-                    "max_price_since": current, "min_price_since": current,
+                    "max_price_since": max_price, "min_price_since": min_price,
                     "action_taken": action,
                 })
 

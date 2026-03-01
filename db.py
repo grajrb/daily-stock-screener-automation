@@ -285,8 +285,8 @@ def get_failure_analysis(conn: sqlite3.Connection, screener_type: str) -> List[d
     rows = conn.execute("""
         SELECT ticker, run_date, entry_price, exit_price, stop_loss, target,
                actual_return_pct, days_held, rsi, adx, vol_spike,
-               rel_str_1m, pct_from_52w_hi, rev_growth, profit_growth,
-               news_sentiment, confidence, rationale
+               rel_str_1m, rel_str_3m, pct_from_52w_hi, rev_growth, profit_growth,
+               news_sentiment, composite_score, confidence, rationale
         FROM picks
         WHERE screener_type=? AND status IN ('STOP_LOSS', 'EXPIRED')
         ORDER BY run_date DESC
