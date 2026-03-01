@@ -724,7 +724,9 @@ def save_picks_to_db(conn, picks: List[FilterResult]):
             "news_sentiment": p.news_sentiment,
             "composite_score": None,
             "rationale": p.rationale,
-            "filters_json": json.dumps({k: v for k, v in p.filters.items()}),
+            "filters_json": json.dumps({k: (bool(v) if isinstance(v, (np.bool_,)) else
+                                             float(v) if isinstance(v, (np.floating, np.integer)) else v)
+                                         for k, v in p.filters.items()}),
         })
         if row_id: count += 1
     print(f"     {count} new picks saved to screener.db")

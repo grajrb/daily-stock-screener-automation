@@ -1,0 +1,16 @@
+Ticker,Signal,Score,Close,Entry,Target_10%,Target_15%,Target_20%,Stop_Loss,R:R,RSI,ADX,Vol,RS_1M,From_52W_Hi,Rev_Gr,Profit_Gr,Rationale
+JSWSTEEL,STRONG BUY,76.6,1264.699951171875,1264.7,1391.17,1454.4,1517.64,1218.45,4.1,60.5,22.6,1.65x,+4.7%,1.6%,11%,235%,Stage-2 uptrend | MACD bullish | Fresh MACD cross | BB squeeze | Vol 1.7x | Profit +235% | Near 52W high
+BPCL,STRONG BUY,74.3,385.3999938964844,385.4,423.94,443.21,462.48,368.22,3.36,61.8,22.9,1.42x,+9.3%,1.6%,5%,89%,Stage-2 uptrend | MACD bullish | Fresh MACD cross | RS +9.3% | Profit +89% | Positive news | Near 52W high
+NESTLEIND,STRONG BUY,73.1,1291.699951171875,1291.7,1420.87,1485.45,1550.04,1265.6,7.42,47.7,25.3,1.98x,-2.0%,3.2%,19%,45%,Stage-2 uptrend | MACD bullish | Fresh MACD cross | BB squeeze | Vol 2.0x | Rev +19% | Profit +45% | Near 52W high
+TITAN,STRONG BUY,69.5,4327.5,4327.5,4760.25,4976.62,5193.0,4192.73,4.82,63.9,38.9,1.27x,+9.4%,1.2%,43%,61%,Stage-2 uptrend | MACD bullish | RS +9.4% | Rev +43% | Profit +61% | Positive news | Near 52W high
+HEROMOTOCO,STRONG BUY,69.0,5710.0,5710.0,6281.0,6566.5,6852.0,5487.01,3.84,55.7,28.9,1.17x,+5.8%,8.9%,22%,15%,Stage-2 uptrend | MACD bullish | Fresh MACD cross | BB squeeze | RS +5.8% | Rev +22% | Profit +15% | Positive news
+EICHERMOT,STRONG BUY,65.9,8010.5,8010.5,8811.55,9212.07,9612.6,7612.69,3.02,61.5,43.8,1.36x,+13.0%,2.7%,23%,21%,Stage-2 uptrend | MACD bullish | RS +13.0% | Rev +23% | Profit +21% | Positive news | Near 52W high
+APOLLOHOSP,STRONG BUY,65.1,7821.5,7821.5,8603.65,8994.72,9385.8,7588.81,5.04,76.2,58.3,1.55x,+13.1%,3.3%,17%,36%,MACD bullish | Vol 1.5x | RS +13.1% | Rev +17% | Profit +36% | Positive news | Near 52W high
+INDUSINDBK,BUY,62.4,956.75,956.75,1052.43,1100.26,1148.1,912.98,3.28,63.3,22.6,0.92x,+7.3%,10.0%,-11%,-91%,Stage-2 uptrend | MACD bullish | Fresh MACD cross | BB squeeze | RS +7.3% | Positive news
+TATASTEEL,BUY,60.8,212.3300018310547,212.33,233.56,244.18,254.8,202.04,3.1,63.3,47.0,0.79x,+10.5%,1.9%,6%,825%,Stage-2 uptrend | MACD bullish | Fresh MACD cross | RS +10.5% | Profit +825% | Near 52W high
+BAJAJ-AUTO,BUY,59.9,9972.5,9972.5,10969.75,11468.38,11967.0,9563.05,3.65,58.3,22.5,0.91x,+4.5%,2.1%,19%,19%,Stage-2 uptrend | MACD bullish | Rev +19% | Profit +19% | Positive news | Near 52W high
+ONGC,BUY,58.9,279.70001220703125,279.7,307.67,321.66,335.64,266.68,3.22,67.3,39.2,1.03x,+7.0%,1.0%,0%,23%,Stage-2 uptrend | MACD bullish | RS +7.0% | Profit +23% | Positive news | Near 52W high
+ULTRACEMCO,BUY,58.5,12677.0,12677.0,13944.7,14578.55,15212.4,12220.32,4.16,48.0,16.2,1.47x,+0.4%,3.3%,23%,27%,Stage-2 uptrend | Rev +23% | Profit +27% | Near 52W high
+LT,WATCH,53.8,4278.2998046875,4278.3,4706.13,4920.04,5133.96,4108.73,3.78,59.6,34.3,1.09x,+9.4%,3.6%,10%,-4%,Stage-2 uptrend | MACD bullish | RS +9.4% | Positive news | Near 52W high
+SBIN,WATCH,53.5,1201.699951171875,1201.7,1321.87,1381.95,1442.04,1156.33,3.97,65.7,37.3,0.65x,+12.1%,2.7%,5%,14%,Stage-2 uptrend | RS +12.1% | Positive news | Near 52W high
+AXISBANK,WATCH,52.6,1383.9000244140625,1383.9,1522.29,1591.49,1660.68,1336.45,4.37,59.1,30.2,1.04x,+1.5%,2.4%,5%,4%,Stage-2 uptrend | MACD bullish | Positive news | Near 52W high
