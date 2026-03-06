@@ -179,7 +179,6 @@ def get_nifty50_history(period: str = "1y") -> pd.DataFrame:
 
 def get_global_pulse() -> dict:
     """Quick check of global market conditions."""
-    print("[3/6] Global market pulse...")
     pulse = {"sp500_change": 0.0, "vix": 0.0, "warning": ""}
     try:
         sp = yf.Ticker("^GSPC").history(period="5d")
@@ -189,9 +188,9 @@ def get_global_pulse() -> dict:
         pulse["vix"] = float(vix["Close"].iloc[-1])
 
         if pulse["sp500_change"] < -2:
-            pulse["warning"] = "S&P 500 dropped >2% — global headwinds, reduce position sizes"
+            pulse["warning"] = "S&P 500 dropped >2% — global headwinds"
         if pulse["vix"] > 25:
-            pulse["warning"] += " | VIX >25 = high fear, be extra cautious"
+            pulse["warning"] += " | VIX >25 = high fear"
 
         print(f"     S&P 500 last session: {pulse['sp500_change']:+.2f}%")
         print(f"     VIX (fear index): {pulse['vix']:.1f}")
@@ -200,6 +199,43 @@ def get_global_pulse() -> dict:
     except Exception:
         print("     [WARN] Could not fetch global data")
     return pulse
+
+
+def check_nifty_regime() -> dict:
+    """Hard market regime gate — checks if Nifty 50 is in a healthy state.
+    Returns dict with 'ok' bool. If not ok, the screener should NOT pick stocks."""
+    regime = {"ok": True, "reason": "", "nifty_above_20sma": True, "india_vix": 0.0}
+    try:
+        nifty = yf.Ticker("^NSEI").history(period="2mo")
+        if nifty.empty:
+            return regime
+        nclose = nifty["Close"]
+        sma20 = float(nclose.rolling(20).mean().iloc[-1])
+        current = float(nclose.iloc[-1])
+        regime["nifty_above_20sma"] = current > sma20
+
+        if current <= sma20:
+            regime["ok"] = False
+            regime["reason"] = (f"Nifty 50 ({current:.0f}) is BELOW its 20-day SMA ({sma20:.0f}) "
+                                "— broad market is weak, no picks today")
+        print(f"     Nifty 50: {current:.0f} | 20-SMA: {sma20:.0f} | "
+              f"{'ABOVE (OK)' if current > sma20 else 'BELOW (BLOCKED)'}")
+    except Exception:
+        print("     [WARN] Could not check Nifty regime")
+
+    try:
+        india_vix = yf.Ticker("^INDIAVIX").history(period="5d")
+        if not india_vix.empty:
+            regime["india_vix"] = float(india_vix["Close"].iloc[-1])
+            print(f"     India VIX: {regime['india_vix']:.1f}")
+            if regime["india_vix"] > 20:
+                regime["ok"] = False
+                regime["reason"] += (f" | India VIX ({regime['india_vix']:.1f}) > 20 "
+                                     "— market fear too high, no picks today")
+    except Exception:
+        print("     [WARN] Could not fetch India VIX")
+
+    return regime
 
 
 def fetch_news_sentiment(symbol: str) -> float:
@@ -835,7 +871,7 @@ def save_and_display(df: pd.DataFrame, pulse: dict):
 
     print(f"\n{'='*100}")
     print(f"  MONDAY STOCK PICKS — {date_str}")
-    print(f"  Stocks passing ALL 8 strict filters | Horizon: 1-2 months | Target: ~15% upside")
+    print(f"  Stocks passing ALL 8 strict filters | Best single pick | Target: ~15% upside")
     if pulse.get("warning"):
         print(f"  GLOBAL WARNING: {pulse['warning']}")
     print(f"{'='*100}\n")
@@ -907,7 +943,7 @@ def main():
         description="Weekly Stock Picker — High-conviction Monday buys with 15%+ upside target",
     )
     parser.add_argument("--fast", action="store_true", help="Skip fundamental analysis (faster but less strict)")
-    parser.add_argument("--top", type=int, default=None, help="Max stocks to pick (default: 10)")
+    parser.add_argument("--top", type=int, default=None, help="Max stocks to pick (default: 1)")
     parser.add_argument("--workers", type=int, default=None, help="Parallel threads (default: 10)")
     parser.add_argument("--check-portfolio", action="store_true", help="Check open trades for exit signals")
     args = parser.parse_args()
@@ -922,8 +958,8 @@ def main():
     print()
     print("=" * 70)
     print("  WEEKLY STOCK PICKER — Monday Market Open Edition")
-    print("  Finding high-conviction stocks with 15%+ upside (1-2 months)")
-    print("  All 8 filters must pass — only the strongest setups survive")
+    print("  Finding THE single best stock with 15%+ upside (1-2 months)")
+    print("  All 8 filters must pass — only the strongest setup survives")
     print("=" * 70)
     print()
 
