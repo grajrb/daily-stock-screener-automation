@@ -33,7 +33,7 @@ warnings.filterwarnings("ignore")
 # ─── CONFIGURATION ────────────────────────────────────────────────────────────
 
 # Minimum closed trades before learning kicks in
-MIN_TRADES_FOR_LEARNING = 5
+MIN_TRADES_FOR_LEARNING = 3
 
 # How aggressively to adjust params (0.0 = no change, 1.0 = fully adopt new value)
 LEARNING_RATE = 0.3
@@ -42,7 +42,7 @@ LEARNING_RATE = 0.3
 WEEKLY_PARAM_BOUNDS = {
     "rsi_min":               (40.0,  65.0,  50.0),
     "rsi_max":               (65.0,  85.0,  75.0),
-    "adx_min":               (15.0,  30.0,  20.0),
+    "adx_min":               (18.0,  35.0,  25.0),
     "volume_spike_min":      (1.0,   2.5,   1.3),
     "max_pct_from_52w_high": (5.0,   25.0,  15.0),
     "min_pct_from_52w_low":  (10.0,  40.0,  25.0),
@@ -63,11 +63,11 @@ SWING_PARAM_BOUNDS = {
     "w_52w_proximity":  (0.1, 2.0, 0.8),
     "w_bulk_deals":     (0.1, 2.0, 0.6),
     # Filter thresholds
-    "min_composite_score":      (30.0, 65.0, 45.0),
+    "min_composite_score":      (40.0, 75.0, 58.0),
     "rsi_low":                  (35.0, 55.0, 45.0),
-    "rsi_high":                 (65.0, 85.0, 78.0),
-    "min_adx":                  (12.0, 28.0, 18.0),
-    "volume_spike_threshold":   (1.0,  2.5,  1.4),
+    "rsi_high":                 (65.0, 80.0, 75.0),
+    "min_adx":                  (15.0, 35.0, 22.0),
+    "volume_spike_threshold":   (1.0,  2.5,  1.2),
     "pct_from_52w_high_max":    (5.0,  25.0, 15.0),
     "consolidation_range_pct":  (4.0,  15.0, 8.0),
 }
@@ -332,6 +332,64 @@ def _analyze_swing_failures(conn) -> Dict[str, float]:
     return suggestions
 
 
+def _tighten_from_pure_losses(conn, screener_type: str, bounds: dict) -> Dict[str, float]:
+    """When win rate is 0% and there are no winners to compare against,
+    tighten filters based on the characteristics of the losing trades.
+    The idea: if ALL picks lost, the current thresholds are too loose."""
+    failures = db.get_failure_analysis(conn, screener_type)
+    if len(failures) < 2:
+        return {}
+
+    suggestions = {}
+
+    # Tighten ADX — losers had weak ADX, raise the minimum
+    fail_adx = [f["adx"] for f in failures if f["adx"] is not None]
+    if fail_adx:
+        med = statistics.median(fail_adx)
+        param = "adx_min" if screener_type == "weekly" else "min_adx"
+        _, max_val, default = bounds.get(param, (15, 30, 20))
+        current = db.get_algo_param(conn, screener_type, param, default)
+        # Push minimum up toward median of losers (they should have been filtered)
+        suggestions[param] = min(max_val, med + 2)
+
+    # Tighten volume — losers had weak volume
+    fail_vol = [f["vol_spike"] for f in failures if f["vol_spike"] is not None]
+    if fail_vol:
+        med = statistics.median(fail_vol)
+        param = "volume_spike_min" if screener_type == "weekly" else "volume_spike_threshold"
+        _, max_val, default = bounds.get(param, (1.0, 2.5, 1.3))
+        suggestions[param] = min(max_val, med + 0.2)
+
+    # Tighten 52-week proximity — losers were too far from high
+    fail_52w = [f["pct_from_52w_hi"] for f in failures if f["pct_from_52w_hi"] is not None]
+    if fail_52w:
+        med = statistics.median(fail_52w)
+        param = "max_pct_from_52w_high" if screener_type == "weekly" else "pct_from_52w_high_max"
+        min_val, _, default = bounds.get(param, (5, 25, 15))
+        suggestions[param] = max(min_val, med - 1)
+
+    # Tighten RSI — narrow the band
+    fail_rsi = [f["rsi"] for f in failures if f["rsi"] is not None]
+    if fail_rsi:
+        med = statistics.median(fail_rsi)
+        rsi_max_param = "rsi_max" if screener_type == "weekly" else "rsi_high"
+        if med > 65:
+            _, max_val, default = bounds.get(rsi_max_param, (65, 85, 75))
+            suggestions[rsi_max_param] = max(65.0, med - 3)
+
+    # For swing: raise min composite score
+    if screener_type == "swing":
+        fail_cs = [f["composite_score"] for f in failures
+                    if f.get("composite_score") is not None]
+        if fail_cs:
+            med = statistics.median(fail_cs)
+            _, max_val, default = bounds.get("min_composite_score", (30, 65, 45))
+            # Push threshold above median of losers
+            suggestions["min_composite_score"] = min(max_val, med + 3)
+
+    return suggestions
+
+
 def learn_from_history(conn) -> dict:
     """
     Main learning function. Analyses closed trades, finds patterns in failures,
@@ -363,6 +421,10 @@ def learn_from_history(conn) -> dict:
         else:
             suggestions = _analyze_swing_failures(conn)
             bounds = SWING_PARAM_BOUNDS
+
+        # If zero wins, use pure-loss tightening instead
+        if win_rate == 0 and not suggestions:
+            suggestions = _tighten_from_pure_losses(conn, screener_type, bounds)
 
         if not suggestions:
             report[screener_type]["status"] = "No parameter adjustments needed."

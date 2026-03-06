@@ -106,7 +106,7 @@ FILTERS = {
     "rsi_min": 50,
     "rsi_max": 75,                           # Not overbought
     "macd_must_be_bullish": True,
-    "adx_min": 20,                           # Trending, not sideways
+    "adx_min": 25,                           # Strong trend required
     # Volume
     "volume_spike_min": 1.3,                 # 30% above 20d avg
     "obv_must_be_rising": True,
@@ -123,10 +123,10 @@ FILTERS = {
     # Risk management
     "min_risk_reward_ratio": 2.0,
     "target_upside_pct": 15,                 # Primary target
-    "stop_loss_atr_multiple": 2.0,
+    "stop_loss_atr_multiple": 2.5,
     # Execution
     "parallel_workers": 10,
-    "top_n": 10,
+    "top_n": 1,
 }
 
 
@@ -553,10 +553,10 @@ def analyze_stock(
     res.entry = round(res.last_close, 2)
     res.target = round(res.last_close * (1 + f["target_upside_pct"] / 100), 2)
 
-    # Stop-loss: tighter of 2x ATR or 2% below SMA50
+    # Stop-loss: wider of 2.5x ATR or 3% below SMA50 (give room to breathe)
     sl_atr = res.last_close - f["stop_loss_atr_multiple"] * res.atr_14
-    sl_sma = res.sma_50 * 0.98
-    res.stop_loss = round(max(sl_atr, sl_sma), 2)
+    sl_sma = res.sma_50 * 0.97
+    res.stop_loss = round(min(sl_atr, sl_sma), 2)
 
     res.upside_pct = round((res.target / res.last_close - 1) * 100, 1)
     res.risk_pct = round((1 - res.stop_loss / res.last_close) * 100, 1)
@@ -671,11 +671,26 @@ def screen_all(
 # TRADE PLAN & PORTFOLIO TRACKER
 # =============================================================================
 
+def _rank_score(p: FilterResult) -> float:
+    """Compute a rank score to pick THE single best stock of the week.
+    Higher is better. Weighs: ADX, risk-reward, volume, RS, fundamentals."""
+    score = 0.0
+    score += min(p.adx_val / 50, 1.0) * 25          # Trend strength (max 25)
+    score += min(p.risk_reward / 5, 1.0) * 20        # Risk-reward (max 20)
+    score += min(p.vol_spike / 3, 1.0) * 15          # Volume conviction (max 15)
+    score += min(max(p.rel_str_1m, 0) / 15, 1.0) * 15  # Relative strength (max 15)
+    score += (1 - min(p.pct_from_52w_hi / 15, 1.0)) * 10  # Near 52W high (max 10)
+    if p.profit_growth and p.profit_growth > 0:
+        score += min(p.profit_growth / 50, 1.0) * 10  # Profit growth (max 10)
+    if p.news_sentiment > 0:
+        score += min(p.news_sentiment / 0.5, 1.0) * 5  # Sentiment (max 5)
+    return score
+
+
 def build_watchlist_df(picks: List[FilterResult], f: dict) -> pd.DataFrame:
-    """Convert picks to a clean DataFrame, sorted by risk-reward."""
-    # Sort: VERY HIGH confidence first, then by risk-reward
-    conf_order = {"VERY HIGH": 0, "HIGH": 1, "MODERATE": 2}
-    picks.sort(key=lambda x: (conf_order.get(x.confidence, 3), -x.risk_reward))
+    """Convert picks to a clean DataFrame. Picks the single best stock."""
+    # Rank by composite rank score — best stock first
+    picks.sort(key=lambda x: _rank_score(x), reverse=True)
     top = picks[: f["top_n"]]
 
     rows = []
@@ -931,8 +946,18 @@ def main():
     # Step 2: Benchmark
     nifty_hist = get_nifty50_history()
 
-    # Step 3: Global pulse
+    # Step 3: Market regime check (hard gate)
+    print("[3/6] Checking market regime...")
+    regime = check_nifty_regime()
     pulse = get_global_pulse()
+
+    if not regime["ok"]:
+        print(f"\n  MARKET REGIME BLOCKED: {regime['reason']}")
+        print("  Sitting out this week — capital preservation > chasing picks.")
+        print("  Run again when broad market conditions improve.\n")
+        db.log_run(conn, "weekly", len(symbols), 0, None, f, notes=f"BLOCKED: {regime['reason']}")
+        conn.close()
+        sys.exit(0)
 
     # Step 4: Screen
     picks = screen_all(symbols, f, nifty_hist, skip_fundamentals=args.fast)

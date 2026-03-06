@@ -83,16 +83,17 @@ DEFAULT_FILTERS = {
     "min_avg_volume_20d": 100_000,
     "min_avg_traded_value_20d": 5_000_000,
     "rsi_low": 45,
-    "rsi_high": 78,
-    "min_adx": 18,
-    "volume_spike_threshold": 1.4,
+    "rsi_high": 75,
+    "min_adx": 22,
+    "volume_spike_threshold": 1.2,
     "sma_50_rising_days": 10,
     "bollinger_squeeze_pctile": 25,
     "consolidation_range_pct": 8,
     "pct_from_52w_high_max": 15,
-    "min_composite_score": 45,
+    "min_composite_score": 58,
     "parallel_workers": 10,
-    "top_n": 15,
+    "top_n": 10,
+    "max_per_sector": 2,
 }
 
 
@@ -111,7 +112,8 @@ def load_tuned_params(conn) -> Tuple[dict, dict]:
 
 # ─── DATA FETCHING ────────────────────────────────────────────────────────────
 
-def get_nifty500_symbols() -> List[str]:
+def get_nifty500_symbols() -> Tuple[List[str], Dict[str, str]]:
+    """Returns (symbol_list, {symbol: industry}) from NSE CSV."""
     print("[1/7] Fetching Nifty 500 constituents...")
     for url in [
         "https://archives.nseindia.com/content/indices/ind_nifty500list.csv",
@@ -120,8 +122,11 @@ def get_nifty500_symbols() -> List[str]:
         try:
             df = pd.read_csv(url, timeout=15)
             symbols = df["Symbol"].tolist()
+            sector_map = {}
+            if "Industry" in df.columns:
+                sector_map = dict(zip(df["Symbol"], df["Industry"]))
             print(f"     {len(symbols)} stocks loaded")
-            return symbols
+            return symbols, sector_map
         except Exception:
             continue
     print("     [WARN] Using Nifty 50 fallback")
@@ -134,7 +139,7 @@ def get_nifty500_symbols() -> List[str]:
         "TECHM","CIPLA","DRREDDY","BPCL","DIVISLAB","APOLLOHOSP","EICHERMOT",
         "HEROMOTOCO","TATACONSUM","BRITANNIA","SBILIFE","HDFCLIFE","M&M",
         "INDUSINDBK","HINDALCO","UPL","BAJAJ-AUTO","LTIM",
-    ]
+    ], {}
 
 
 def get_nifty50_history(period="1y") -> pd.DataFrame:
@@ -354,6 +359,14 @@ def analyze_stock(symbol, weights, filters, nifty_hist, bulk_deals, skip_fund=Fa
     if obv_rising: vol_sc += 0.5
     volume_score = min(vol_sc / 2.0, 1.0)
 
+    # Hard gate: reject if volume spike below threshold AND OBV not rising
+    if vol_spike < filters["volume_spike_threshold"] and not obv_rising:
+        return None
+
+    # Hard gate: ADX must show a real trend
+    if adx_val < filters["min_adx"]:
+        return None
+
     # ── BOLLINGER SCORE ───────────────────────────────────────────────
     upper, lower, bw = compute_bollinger(c)
     bb_bw = float(bw.iloc[-1])
@@ -457,18 +470,21 @@ def analyze_stock(symbol, weights, filters, nifty_hist, bulk_deals, skip_fund=Fa
     t1 = round(price * 1.10, 2)
     t2 = round(price * 1.15, 2)
     t3 = round(price * 1.20, 2)
-    sl_atr = price - 2 * atr14
-    sl_sma = sma50 * 0.98
-    sl = round(max(sl_atr, sl_sma), 2)
+    sl_atr = price - 2.5 * atr14
+    sl_sma = sma50 * 0.97
+    sl = round(min(sl_atr, sl_sma), 2)
     risk = entry - sl
     rr = round((t2 - entry) / risk, 2) if risk > 0 else 0.0
     risk_pct = round((1 - sl / price) * 100, 1)
+
+    # Hard gate: risk-reward must be at least 2:1
+    if rr < 2.0:
+        return None
 
     # ── SIGNAL ────────────────────────────────────────────────────────
     strong = sum([trend_score >= 0.8, momentum_score >= 0.6, volume_score >= 0.5, rs1m > 3, rr >= 2.0])
     if composite >= 65 and strong >= 4: signal = "STRONG BUY"
     elif composite >= 55 and strong >= 3: signal = "BUY"
-    elif composite >= 45: signal = "WATCH"
     else: signal = "AVOID"
 
     reasons = []
@@ -535,11 +551,32 @@ def run_screening(symbols, weights, filters, nifty_hist, bulk_deals, skip_fund=F
 
 # ─── SAVE TO DB ───────────────────────────────────────────────────────────────
 
-def save_picks_to_db(conn, results, top_n):
-    """Save top picks to SQLite database."""
+def save_picks_to_db(conn, results, top_n, sector_map, max_per_sector=2):
+    """Save top picks to SQLite, enforcing sector cap and skipping weekly duplicates."""
     results.sort(key=lambda x: x["composite_score"], reverse=True)
-    top = results[:top_n]
     today = datetime.now().strftime("%Y-%m-%d")
+
+    # Get tickers already picked by weekly screener today
+    weekly_today = {r["ticker"] for r in db.get_open_picks(conn, "weekly")}
+
+    sector_counts = {}  # industry -> count
+    top = []
+    for r in results:
+        if len(top) >= top_n:
+            break
+        # Skip if already in weekly picks
+        if r["ticker"] in weekly_today:
+            continue
+        # Skip AVOID signals
+        if r.get("confidence") == "AVOID":
+            continue
+        # Enforce sector cap
+        sector = sector_map.get(r["ticker"], "Unknown")
+        if sector_counts.get(sector, 0) >= max_per_sector:
+            continue
+        sector_counts[sector] = sector_counts.get(sector, 0) + 1
+        top.append(r)
+
     count = 0
     for r in top:
         row_id = db.insert_pick(conn, {
@@ -699,18 +736,48 @@ def main():
     if args.top: filters["top_n"] = args.top
     if args.workers: filters["parallel_workers"] = args.workers
 
-    symbols = get_nifty500_symbols()
+    symbols, sector_map = get_nifty500_symbols()
     if not symbols: sys.exit(1)
 
     nifty_hist = get_nifty50_history()
     bulk_deals = fetch_bulk_deals()
 
-    print("[4/7] Global check...")
+    print("[4/7] Market regime check...")
+    regime_ok = True
+    regime_reason = ""
+    try:
+        nifty_close = nifty_hist["Close"]
+        sma20 = float(nifty_close.rolling(20).mean().iloc[-1])
+        current_nifty = float(nifty_close.iloc[-1])
+        if current_nifty <= sma20:
+            regime_ok = False
+            regime_reason = (f"Nifty 50 ({current_nifty:.0f}) below 20-SMA ({sma20:.0f})")
+        print(f"     Nifty 50: {current_nifty:.0f} | 20-SMA: {sma20:.0f} | "
+              f"{'ABOVE (OK)' if current_nifty > sma20 else 'BELOW (BLOCKED)'}")
+    except Exception:
+        print("     [WARN] Could not check Nifty regime")
+    try:
+        india_vix = yf.Ticker("^INDIAVIX").history(period="5d")
+        if not india_vix.empty:
+            vix_val = float(india_vix["Close"].iloc[-1])
+            print(f"     India VIX: {vix_val:.1f}")
+            if vix_val > 20:
+                regime_ok = False
+                regime_reason += f" | India VIX ({vix_val:.1f}) > 20"
+    except Exception:
+        pass
     try:
         sp = yf.Ticker("^GSPC").history(period="5d")
         print(f"     S&P 500: {float(sp['Close'].pct_change().iloc[-1]*100):+.2f}%")
     except Exception:
         pass
+
+    if not regime_ok:
+        print(f"\n  MARKET REGIME BLOCKED: {regime_reason}")
+        print("  Sitting out \u2014 capital preservation > chasing picks.\n")
+        db.log_run(conn, "swing", len(symbols), 0, None, filters, notes=f"BLOCKED: {regime_reason}")
+        conn.close()
+        sys.exit(0)
 
     results = run_screening(symbols, weights, filters, nifty_hist, bulk_deals, skip_fund=args.fast)
     if not results:
@@ -718,7 +785,8 @@ def main():
         sys.exit(0)
 
     print("[6/7] Saving to database...")
-    top = save_picks_to_db(conn, results, filters["top_n"])
+    max_per_sector = filters.get("max_per_sector", 2)
+    top = save_picks_to_db(conn, results, filters["top_n"], sector_map, max_per_sector)
 
     stats = db.get_performance_stats(conn, "swing")
     db.log_run(conn, "swing", len(symbols), len(results), stats.get("win_rate"), filters)
