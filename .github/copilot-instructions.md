@@ -2,15 +2,15 @@
 
 ## Project Overview
 
-Indian stock market screener system that identifies high-probability buy candidates from Nifty 500 stocks. Stores all data in SQLite (`screener.db`). Learns from past failures to auto-improve filter thresholds and scoring weights.
+Indian stock market screener system that identifies high-probability buy candidates from Nifty 500 stocks. Stores all data in SQLite (`screener.db`). Learns from past failures to auto-improve filter thresholds and scoring weights. Has a hard market regime gate that blocks picks when the broad market is weak.
 
 ## Architecture & Files
 
 | File                         | Purpose                                                                                       |
 | ---------------------------- | --------------------------------------------------------------------------------------------- |
-| `weekly_stock_picker.py`     | Monday morning picks, strict 8-filter checklist. Horizon: 1-4 weeks.                          |
-| `swing_breakout_screener.py` | 1-2 month swing trades, weighted 10-factor scoring.                                           |
-| `backtester.py`              | Checks open picks vs market, analyses losses, adjusts algo params automatically.              |
+| `weekly_stock_picker.py`     | Single best pick of the week, strict 8-filter checklist. Regime-gated. Horizon: 1-4 weeks.    |
+| `swing_breakout_screener.py` | Top 10 swing trades with sector cap, weighted 10-factor scoring. Regime-gated.                |
+| `backtester.py`              | Checks open picks vs market, analyses losses, adjusts algo params. Pure-loss learning.        |
 | `db.py`                      | Shared SQLite layer — tables: `picks`, `trade_outcomes`, `algo_params`, `run_log`.            |
 | `config.json`                | User-editable config (top_n, min_price, workers, filters).                                    |
 | `requirements.txt`           | pandas, numpy, yfinance, requests, beautifulsoup4, lxml, tabulate, feedparser, vaderSentiment |
@@ -32,24 +32,33 @@ Indian stock market screener system that identifies high-probability buy candida
 
 ## How It Works — Weekly Screener
 
-1. Fetches Nifty 500 tickers
-2. Parallel-downloads ~6 months price data from Yahoo Finance
-3. Calculates: RSI, ADX, MACD, 50/200 SMA, Bollinger Bands, volume spike, relative strength vs Nifty50, 52-week distance, fundamentals, news sentiment
-4. Applies 8 strict filters (ALL must pass): Trend, Momentum, Volume, Relative Strength, 52-Week, Fundamentals, Sentiment, Risk-Reward
-5. Saves picks to `screener.db` and generates CSV report
+1. **Market regime check**: Nifty 50 must be above 20-SMA AND India VIX ≤ 20 — otherwise picks are BLOCKED
+2. Fetches Nifty 500 tickers
+3. Parallel-downloads ~1 year price data from Yahoo Finance
+4. Calculates: RSI, ADX, MACD, 50/200 SMA, Bollinger Bands, volume spike, relative strength vs Nifty50, 52-week distance, fundamentals, news sentiment
+5. Applies 8 strict filters (ALL must pass): Trend, Momentum (ADX ≥ 25), Volume, Relative Strength, 52-Week, Fundamentals, Sentiment, Risk-Reward
+6. Ranks all passing stocks by composite rank score (ADX, R:R, volume, RS, fundamentals)
+7. Outputs **only the #1 best stock** (top_n = 1)
+8. Stop-loss = wider of 2.5× ATR or 3% below SMA50
 
 ## How It Works — Swing Screener
 
-1. Same data fetch as weekly
-2. Calculates 10 scoring factors with tunable weights (loaded from `algo_params` table)
-3. Composite score = weighted sum; picks passing minimum threshold are ranked
-4. Top N by score saved to DB
+1. **Market regime check**: Same as weekly — blocked if market is weak
+2. Same data fetch as weekly
+3. Calculates 10 scoring factors with tunable weights (loaded from `algo_params` table)
+4. **Hard gates**: ADX ≥ 22, volume + OBV check, risk-reward ≥ 2:1, min composite score 58
+5. Composite score = weighted sum; top picks ranked
+6. **Sector cap**: max 2 per industry, no duplicates from weekly picks
+7. Only STRONG BUY and BUY signals output (WATCH eliminated)
+8. Stop-loss = wider of 2.5× ATR or 3% below SMA50
 
 ## Self-Learning (backtester.py)
 
 - Compares open picks against live prices → closes TARGET_HIT / STOP_LOSS / EXPIRED
 - Analyses failure patterns: median RSI, ADX, volume, RS of losers vs winners
+- **Pure-loss learning**: when win rate is 0%, tightens ADX, volume, 52W, RSI thresholds from loser data alone
 - Adjusts params using learning rate 0.3, clamped to safe bounds
+- Kicks in after **3 closed trades** (not 5)
 - Parameters stored in `algo_params` table, loaded automatically on next screener run
 
 ## CLI Commands
@@ -77,11 +86,14 @@ python backtester.py --reset                # Reset learned params to defaults
 
 - **Indian market only** — Nifty 500 universe, `.NS` Yahoo suffix, INR prices
 - **SQLite not CSV/JSON** — All picks, outcomes, params in one `screener.db` file
-- **Two paradigms**: Weekly = strict filters (all must pass), Swing = composite scoring (top N)
+- **Two paradigms**: Weekly = strict filters (1 best stock), Swing = composite scoring (top 10 with sector cap)
+- **Market regime gate** — Both screeners check Nifty vs 20-SMA + India VIX before producing any picks
 - **Self-tuning**: backtester.py auto-adjusts filter thresholds and scoring weights based on win/loss analysis
+- **Pure-loss learning**: tightens all filters from loser data alone when win rate is 0%
 - **ThreadPoolExecutor** for parallel screening (default 10 workers)
-- **Stop-loss always set** — 7% below entry for weekly, based on ATR for swing
-- **Target**: 15% for weekly, ATR-based for swing (10-20%+ expected)
+- **Wider stop-losses** — wider of 2.5× ATR or 3% below SMA50 (not tighter)
+- **Sector cap**: max 2 swing picks per industry, no cross-screener duplicates
+- **Target**: 15% for weekly, 10-20%+ for swing
 
 ## When User Asks To...
 
@@ -91,6 +103,7 @@ python backtester.py --reset                # Reset learned params to defaults
 - "Show performance" → `python backtester.py --report`
 - "Add a new filter" → Edit the `FILTERS` dict in the relevant screener, add corresponding analysis in `backtester.py`
 - "Change target %" → Edit `config.json` or `FILTERS` dict in the screener
+- "Market blocked, force picks" → Don't. The regime gate exists for a reason. Wait for market to improve.
 
 ## Tech Stack
 

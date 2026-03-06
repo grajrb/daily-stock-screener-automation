@@ -3,6 +3,8 @@
 Indian stock market screener system that scans **Nifty 500** stocks to find high-probability buy candidates.  
 Uses SQLite for all data, learns from past failures, and auto-improves over time.
 
+**Key safety features**: Market regime gate (blocks picks in weak markets), sector diversification cap, wider stop-losses, and pure-loss learning engine.
+
 ---
 
 ## Quick Start
@@ -10,10 +12,10 @@ Uses SQLite for all data, learns from past failures, and auto-improves over time
 ```bash
 pip install -r requirements.txt
 
-# Weekly picks (Monday morning, strict 8-filter checklist)
+# Weekly pick (single best stock, strict 8-filter checklist)
 python weekly_stock_picker.py
 
-# Swing picks (1-2 month horizon, 10-factor scoring)
+# Swing picks (top 10 scored, 1-2 month horizon)
 python swing_breakout_screener.py
 
 # Check portfolio & auto-learn from wins/losses
@@ -26,16 +28,23 @@ python backtester.py
 
 ## The Two Screeners
 
-### `weekly_stock_picker.py` — Weekly (1-4 weeks)
+### `weekly_stock_picker.py` — Single Best Pick of the Week
 - **Method**: Strict 8-filter checklist — ALL must pass
-- **Filters**: Trend (SMA/MACD), Momentum (RSI 50-75 + ADX >20), Volume spike, Relative strength vs Nifty50, 52-week proximity, Fundamentals, News sentiment, Risk-reward ratio
-- **Target**: 15% upside | **Stop-loss**: 7% below entry
-- **Best run on**: Monday morning before market opens
+- **Market regime gate**: Blocks picks if Nifty 50 < 20-SMA or India VIX > 20
+- **Filters**: Trend (SMA/MACD), Momentum (RSI 50-75 + ADX ≥ 25), Volume spike (1.3x+), Relative strength vs Nifty50, 52-week proximity, Fundamentals, News sentiment, Risk-reward ratio
+- **Output**: Only the **#1 ranked stock** (ranked by composite score of ADX, R:R, volume, RS, fundamentals)
+- **Target**: 15% upside | **Stop-loss**: wider of 2.5× ATR or 3% below SMA50
+- **Best run on**: Sunday evening for Monday market open
 
-### `swing_breakout_screener.py` — Swing (1-2 months)
+### `swing_breakout_screener.py` — Swing Trades (1-2 months)
 - **Method**: Weighted 10-factor scoring, ranked by composite score
+- **Market regime gate**: Same as weekly — blocks picks in weak markets
+- **Hard gates**: ADX ≥ 22, volume + OBV check, risk-reward ≥ 2:1, min score 58
 - **Factors**: Trend alignment, momentum, volume, Bollinger position, relative strength, consolidation breakout, fundamentals, sentiment, 52-week position, bulk deals
-- **Target**: 10-20%+ | **Stop-loss**: ATR-based
+- **Sector cap**: Max 2 picks per industry — prevents correlated blowups
+- **No duplicates**: Skips stocks already picked by weekly screener
+- **Signals**: Only STRONG BUY and BUY (no WATCH)
+- **Target**: 10-20%+ | **Stop-loss**: wider of 2.5× ATR or 3% below SMA50
 - **Weights auto-tuned** from past performance via `backtester.py`
 
 ---
@@ -46,7 +55,9 @@ python backtester.py
 - Checks all open picks against live market prices
 - Closes positions that hit target, stop-loss, or expiry
 - **Analyses failure patterns**: compares technical profiles of losers vs winners
+- **Pure-loss learning**: when win rate is 0%, tightens filters from loser data alone (no winners needed)
 - **Auto-adjusts parameters** with learning rate 0.3, clamped to safe bounds
+- Kicks in after **3 closed trades** per screener
 - Tuned parameters saved to SQLite and loaded on next screener run
 
 ```bash
@@ -105,13 +116,15 @@ backtester.py ──────────────┘
 
 ## How To Trade
 
-1. **BUY** at the Entry Price on Monday after 9:30 AM (let first 15 min settle)
-2. **SET STOP-LOSS** immediately at the Stop_Loss price
-3. **HOLD** — don't panic-sell on small dips
-4. **SELL** when the stock hits the Target price
-5. If a stock goes up 10%+, trail your stop-loss to your entry price
-6. Run `python backtester.py` weekly to check exits and learn
-7. Max hold: 60 days (weekly) or 120 days (swing) — review if target not hit
+1. **Friday evening**: Run `python backtester.py` to learn from this week
+2. **Sunday evening**: Run `python weekly_stock_picker.py` then `python swing_breakout_screener.py`
+3. If the screener says **MARKET REGIME BLOCKED** — sit out, don't force trades
+4. **Monday 9:30 AM**: Buy at Entry Price (wait 15 min after market open)
+5. **SET STOP-LOSS** immediately at the Stop_Loss price — never skip this
+6. **HOLD** — don't panic-sell on small dips (stop-losses are now wider, 5-8%)
+7. **SELL** when the stock hits the Target price
+8. If a stock goes up 10%+, trail your stop-loss to your entry price
+9. Max hold: 60 days (weekly) or 120 days (swing) — review if target not hit
 
 ## Config
 
@@ -119,11 +132,16 @@ Edit `config.json` to change defaults:
 ```json
 {
   "screener_settings": {
-    "top_n": 10,
+    "top_n": 1,
     "min_price": 50,
     "parallel_workers": 10
   }
 }
+```
+
+Key defaults (set in code):
+- Weekly: `top_n = 1` (single best stock), `adx_min = 25`, `stop_loss_atr_multiple = 2.5`
+- Swing: `top_n = 10`, `min_composite_score = 58`, `min_adx = 22`, `max_per_sector = 2`
 ```
 
 ## Project Structure
