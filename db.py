@@ -4,10 +4,12 @@ db.py — SQLite Database Layer
 Shared database for both weekly_stock_picker.py and swing_breakout_screener.py.
 
 Tables:
-    picks          — Every stock pick ever made (weekly + swing)
-    trade_outcomes — Actual results after backtest checks
-    algo_params    — Self-tuning filter parameters (learned from wins/losses)
-    run_log        — Audit trail of every screener run
+    picks              — Every stock pick ever made (weekly + swing)
+    trade_outcomes     — Actual results after backtest checks
+    algo_params        — Self-tuning filter parameters (learned from wins/losses)
+    run_log            — Audit trail of every screener run
+    symbol_cache       — Cached Nifty 500 / Nifty 50 symbol list (reduces NSE fetches)
+    market_breadth_log — Daily breadth snapshots (advance/decline, % above SMA)
 """
 
 import json
@@ -63,6 +65,12 @@ def _create_tables(conn: sqlite3.Connection):
         actual_return_pct REAL,
         days_held       INTEGER,
         created_at      TEXT DEFAULT (datetime('now')),
+        -- NEW COLUMNS (Indian market specific) --
+        delivery_vol_pct    REAL,          -- Delivery volume % from NSE
+        pe_ratio            REAL,          -- Price-to-Earnings ratio
+        fo_flag             INTEGER DEFAULT 0,  -- 1 if F&O segment stock
+        fii_net_activity    REAL,          -- FII net buy/sell (cr) for this stock if available
+        trailing_stop       REAL,          -- Auto-updated trailing stop after 10%+ move
         UNIQUE(run_date, screener_type, ticker)
     );
 
@@ -103,11 +111,34 @@ def _create_tables(conn: sqlite3.Connection):
         created_at      TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS symbol_cache (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        cache_type      TEXT NOT NULL,     -- 'nifty500' or 'nifty50'
+        symbol          TEXT NOT NULL,
+        industry        TEXT,
+        updated_at      TEXT DEFAULT (datetime('now')),
+        UNIQUE(cache_type, symbol)
+    );
+
+    CREATE TABLE IF NOT EXISTS market_breadth_log (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        log_date        TEXT NOT NULL UNIQUE,
+        nifty_close     REAL,
+        nifty_sma20     REAL,
+        india_vix       REAL,
+        advance_count    INTEGER,          -- Stocks that advanced
+        decline_count    INTEGER,          -- Stocks that declined
+        pct_above_sma50 REAL,              -- % of stocks above 50-SMA
+        fii_net_equity  REAL,              -- FII net buy/sell in equity (INR Cr)
+        dii_net_equity  REAL,              -- DII net buy/sell in equity (INR Cr)
+        created_at      TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_picks_status ON picks(status);
     CREATE INDEX IF NOT EXISTS idx_picks_screener ON picks(screener_type, run_date);
     CREATE INDEX IF NOT EXISTS idx_picks_ticker ON picks(ticker);
+    CREATE INDEX IF NOT EXISTS idx_sym_cache_type ON symbol_cache(cache_type);
     """)
-    conn.commit()
 
 
 # ─── PICKS ────────────────────────────────────────────────────────────────────
@@ -122,14 +153,16 @@ def insert_pick(conn: sqlite3.Connection, data: dict) -> int:
                 confidence, rsi, adx, macd_bullish, vol_spike,
                 rel_str_1m, rel_str_3m, pct_from_52w_hi,
                 rev_growth, profit_growth, news_sentiment,
-                composite_score, rationale, filters_json
+                composite_score, rationale, filters_json,
+                delivery_vol_pct, pe_ratio, fo_flag, fii_net_activity
             ) VALUES (
                 :run_date, :screener_type, :ticker, :last_close, :entry_price,
                 :target, :stop_loss, :upside_pct, :risk_pct, :risk_reward,
                 :confidence, :rsi, :adx, :macd_bullish, :vol_spike,
                 :rel_str_1m, :rel_str_3m, :pct_from_52w_hi,
                 :rev_growth, :profit_growth, :news_sentiment,
-                :composite_score, :rationale, :filters_json
+                :composite_score, :rationale, :filters_json,
+                :delivery_vol_pct, :pe_ratio, :fo_flag, :fii_net_activity
             )
         """, data)
         conn.commit()
@@ -159,6 +192,12 @@ def close_pick(conn: sqlite3.Connection, pick_id: int, status: str, exit_price: 
         UPDATE picks SET status=?, exit_date=?, exit_price=?,
         actual_return_pct=?, days_held=? WHERE id=?
     """, (status, exit_date, exit_price, actual_return_pct, days_held, pick_id))
+    conn.commit()
+
+
+def update_trailing_stop(conn: sqlite3.Connection, pick_id: int, new_stop: float):
+    """Update trailing stop for an open pick."""
+    conn.execute("UPDATE picks SET trailing_stop=? WHERE id=?", (new_stop, pick_id))
     conn.commit()
 
 
@@ -195,6 +234,69 @@ def insert_outcome(conn: sqlite3.Connection, data: dict):
         )
     """, data)
     conn.commit()
+
+
+# ─── SYMBOL CACHE ─────────────────────────────────────────────────────────────
+
+def get_cached_symbols(conn: sqlite3.Connection, cache_type: str) -> Tuple[List[str], Dict[str, str]]:
+    """Get cached symbols and sector map. Returns (symbols, sector_map)."""
+    rows = conn.execute(
+        "SELECT symbol, industry FROM symbol_cache WHERE cache_type=? ORDER BY symbol",
+        (cache_type,)
+    ).fetchall()
+    symbols = [r["symbol"] for r in rows]
+    sector_map = {r["symbol"]: (r["industry"] or "Unknown") for r in rows}
+    return symbols, sector_map
+
+
+def set_cached_symbols(conn: sqlite3.Connection, cache_type: str, symbols: List[str],
+                       sector_map: Dict[str, str]):
+    """Replace cached symbols for a given cache_type."""
+    conn.execute("DELETE FROM symbol_cache WHERE cache_type=?", (cache_type,))
+    for sym in symbols:
+        conn.execute(
+            "INSERT OR REPLACE INTO symbol_cache (cache_type, symbol, industry) VALUES (?, ?, ?)",
+            (cache_type, sym, sector_map.get(sym))
+        )
+    conn.commit()
+
+
+def get_cache_age(conn: sqlite3.Connection, cache_type: str) -> Optional[int]:
+    """Get age of cache in days. Returns None if no cache."""
+    row = conn.execute(
+        "SELECT MIN(updated_at) as oldest FROM symbol_cache WHERE cache_type=?",
+        (cache_type,)
+    ).fetchone()
+    if row and row["oldest"]:
+        cached_date = datetime.strptime(row["oldest"], "%Y-%m-%d %H:%M:%S")
+        return (datetime.now() - cached_date).days
+    return None
+
+
+# ─── MARKET BREADTH ───────────────────────────────────────────────────────────
+
+def log_market_breadth(conn: sqlite3.Connection, data: dict):
+    """Log daily market breadth snapshot."""
+    conn.execute("""
+        INSERT OR REPLACE INTO market_breadth_log (
+            log_date, nifty_close, nifty_sma20, india_vix,
+            advance_count, decline_count, pct_above_sma50,
+            fii_net_equity, dii_net_equity
+        ) VALUES (
+            :log_date, :nifty_close, :nifty_sma20, :india_vix,
+            :advance_count, :decline_count, :pct_above_sma50,
+            :fii_net_equity, :dii_net_equity
+        )
+    """, data)
+    conn.commit()
+
+
+def get_latest_breadth(conn: sqlite3.Connection) -> Optional[dict]:
+    """Get the most recent market breadth snapshot."""
+    row = conn.execute(
+        "SELECT * FROM market_breadth_log ORDER BY log_date DESC LIMIT 1"
+    ).fetchone()
+    return dict(row) if row else None
 
 
 # ─── ALGO PARAMS (self-tuning) ───────────────────────────────────────────────
@@ -286,7 +388,8 @@ def get_failure_analysis(conn: sqlite3.Connection, screener_type: str) -> List[d
         SELECT ticker, run_date, entry_price, exit_price, stop_loss, target,
                actual_return_pct, days_held, rsi, adx, vol_spike,
                rel_str_1m, rel_str_3m, pct_from_52w_hi, rev_growth, profit_growth,
-               news_sentiment, composite_score, confidence, rationale
+               news_sentiment, composite_score, confidence, rationale,
+               delivery_vol_pct, pe_ratio, fo_flag, fii_net_activity
         FROM picks
         WHERE screener_type=? AND status IN ('STOP_LOSS', 'EXPIRED')
         ORDER BY run_date DESC
