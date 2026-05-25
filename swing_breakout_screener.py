@@ -677,6 +677,15 @@ def display_results(top_picks, conn):
     date_str = datetime.now().strftime("%Y-%m-%d")
     csv_path = f"swing_picks_{date_str}.csv"
 
+    if not top_picks:
+        print(f"\n{'='*100}")
+        print(f"  SWING-TRADE PICKS — {date_str} (1-2 Month Horizon)")
+        print(f"{'='*100}\n")
+        print("  No picks to display.\n")
+        print(f"  Saved: {csv_path} + screener.db" if os.path.exists(csv_path) else "")
+        print(f"  Check trades: python swing_breakout_screener.py --check-portfolio\n")
+        return
+
     rows = []
     for r in top_picks:
         rows.append({
